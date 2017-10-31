@@ -147,15 +147,6 @@ sub ps_create {
     )->res->json || {}};
 }
 
-# Only restart is available now?
-sub run {
-  my ($self, %params) = (shift, @_);
-
-  return
-    %{$self->ua->post('/apps/' . $params{name} . '/dynos' => form => \%params)
-      ->res->json || {}};
-}
-
 sub restart {
   my ($self, %params) = (shift, @_);
 
@@ -213,8 +204,7 @@ sub add_domain {
 
   return 1
     if $self->ua->post(
-    $url => json => { hostname => $params{domain} })->res->code
-    == 201;
+      $url => json => { hostname => $params{domain} })->res->code == 201;
 }
 
 sub domains {
@@ -245,6 +235,8 @@ Net::Heroku - Heroku API
 Heroku API
 
 Requires Heroku account - free @ L<http://heroku.com>
+
+Domain functions are untested with new API (v0.20+).
 
 =head1 USAGE
 
@@ -284,7 +276,7 @@ Requires api key or user/pass. Returns Net::Heroku object.
 
     my @apps = $h->apps;
 
-Returns list of hash references with app information
+Returns list of hash references with app information.
 
 =head2 destroy
 
@@ -324,34 +316,28 @@ Returns list of keys
 
 =head2 remove_key
 
-    my $bool = $h->remove_key(key_name => $key_name);
+    my $bool = $h->remove_key(key_id => $key_id);
 
-Requires name associated with key.  Removes key.
+Requires id associated with key.  Removes key.
 
 =head2 ps
 
     my @processes = $h->ps(name => $name);
 
-Requires app name.  Returns list of processes.
-
-=head2 run
-
-    my $process = $h->run(name => $name, command => $command);
-
-Requires app name and command.  Runs command once.  Returns hash response.
+Requires app name.  Returns list of dynos.
 
 =head2 restart
 
     my $bool = $h->restart(name => $name);
-    my $bool = $h->restart(name => $name, ps => $ps, type => $type);
+    my $bool = $h->restart(name => $name, dyno => $dyno);
 
-Requires app name.  Restarts app.  If ps is supplied, only process is restarted.
+Requires app name.  Restarts app.  If dyno is supplied, only dyno is restarted.
 
 =head2 stop
 
-    my $bool = $h->stop(name => $name, ps => $ps, type => $type);
+    my $bool = $h->stop(name => $name, dyno => $dyno);
 
-Requires app name.  Stop app process.
+Requires app name.  Stop app dyno.
 
 =head2 releases
 
@@ -381,16 +367,16 @@ Requires app name associated with domain.  Removes domain.
 
 =head2 rollback
 
-    my $bool = $h->rollback(name => $name, release => $release);
+    my $bool = $h->rollback(name => $name, release => $release_id);
 
-Rolls back to a specified releases
+Rolls back to a specified release by id.
 
 =head2 error
 
     my $message = $h->error;
     my %err     = $h->error;
 
-In scalar context, returns error message from last request
+In scalar context, returns error message from last request.
 
 In list context, returns hash with keys: code, message.
 
@@ -406,7 +392,7 @@ L<http://github.com/tempire/net-heroku>
 
 =head1 VERSION
 
-0.11
+0.20
 
 =head1 AUTHOR
 
@@ -415,5 +401,6 @@ Glen Hinkle C<tempire@cpan.org>
 =head1 CONTRIBUTORS
 
 Brian D. Foy
+rage311
 
 =cut
