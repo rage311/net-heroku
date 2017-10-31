@@ -2,9 +2,9 @@ package Net::Heroku;
 use Mojo::Base -base;
 use Net::Heroku::UserAgent;
 use Mojo::JSON qw(encode_json);
-use Mojo::Util 'url_escape';
+use Mojo::Util qw(url_escape b64_encode);
 
-our $VERSION = 0.11;
+our $VERSION = 0.20;
 
 has host => 'api.heroku.com';
 has ua => sub { Net::Heroku::UserAgent->new(host => shift->host) };
@@ -17,7 +17,7 @@ sub new {
   # Assume email & pass
   $self->ua->api_key(
     defined $params{email}
-    ? $self->_retrieve_api_key(@params{qw/ email password /})
+    ? $self->_retrieve_token(@params{qw/ email password /})
     : $params{api_key} ? $params{api_key}
     :                    ''
   );
@@ -33,16 +33,19 @@ sub error {
 
   return (
     code    => $res->code,
-    message => ($res->json ? $res->json->{error} : $res->body)
+    #id      => ($res->json ? $res->json->{id} : ''),
+    message => ($res->json ? $res->json->{message} : $res->body),
   );
 }
 
-sub _retrieve_api_key {
+# actually retrieving a token now
+sub _retrieve_token {
   my ($self, $email, $password) = @_;
 
   return $self->ua->post(
-    '/login' => form => {email => $email, password => $password})
-    ->res->json('/api_key');
+      '/oauth/authorizations' =>
+      { Authorization => 'Basic ' . b64_encode("$email:$password", "") }
+    )->res->json('/access_token/token');
 }
 
 sub apps {
@@ -51,11 +54,12 @@ sub apps {
   return @{$self->ua->get('/apps')->res->json || []};
 }
 
+# create actually returns a 201 status now when app is created
 sub app_created {
   my ($self, %params) = (shift, @_);
 
   return 1
-    if $self->ua->put('/apps/' . $params{name} . '/status')->res->code == 201;
+    if $self->ua->get('/apps/' . $params{name})->res->code == 200;
 }
 
 sub destroy {
@@ -68,29 +72,21 @@ sub destroy {
 sub create {
   my ($self, %params) = (shift, @_);
 
-  # Empty space names no longer allowed
-  #delete $params{name} if !$params{name};
+  my $res = $self->ua->post('/apps' => json => \%params)->res;
 
-  my @ar = map +("app[$_]" => $params{$_}) => keys %params;
-  %params = (
-    'app[stack]' => 'cedar',
-    @ar,
-  );
-
-  my $res = $self->ua->post('/apps' => form => \%params)->res;
-
-  return $res->json && $res->code == 202 ? %{$res->json} : ();
+  return $res->json && $res->code == 201 ? %{$res->json} : ();
 }
 
 sub add_config {
   my ($self, %params) = (shift, @_);
 
-  return %{$self->ua->put(
-          '/apps/'
-        . (defined $params{name} and delete($params{name}))
-        . '/config_vars' => encode_json(\%params)
-      )->res->json
-      || {}
+  return %{$self->ua->patch(
+      '/apps/'
+      . (defined $params{name} and delete($params{name}))
+      . '/config-vars' =>
+      json => \%params
+    )->res->json
+    || {}
   };
 }
 
@@ -98,42 +94,65 @@ sub config {
   my ($self, %params) = (shift, @_);
 
   return
-    %{$self->ua->get('/apps/' . $params{name} . '/config_vars')->res->json
+    %{$self->ua->get('/apps/' . $params{name} . '/config-vars')->res->json
       || []};
 }
 
 sub add_key {
   my ($self, %params) = (shift, @_);
 
-  return 1
-    if $self->ua->post('/user/keys' => $params{key})->res->{code} == 200;
+  return
+    %{$self->ua->post(
+      '/account/keys' => json => { public_key => $params{key} }
+    )->result->json};
 }
 
 sub keys {
   my ($self, %params) = (shift, @_);
 
-  return @{$self->ua->get('/user/keys')->res->json || []};
+  return @{$self->ua->get('/account/keys')->result->json || []};
 }
 
+# needs to use key id now
 sub remove_key {
   my ($self, %params) = (shift, @_);
 
   my $res =
-    $self->ua->delete('/user/keys/' . url_escape($params{key_name}))->res;
+    $self->ua->delete('/account/keys/' . url_escape($params{key_id}))->res;
   return 1 if $res->{code} == 200;
 }
 
 sub ps {
   my ($self, %params) = (shift, @_);
 
-  return @{$self->ua->get('/apps/' . $params{name} . '/ps')->res->json || []};
+  my $url =
+      '/apps/'
+    . $params{name}
+    . '/dynos'
+    . ($params{dyno} ? '/' . $params{dyno} : '');
+
+  my $ps = $self->ua->get($url)->res->json || [];
+
+  return $params{dyno} ? %$ps : @$ps;
 }
 
+sub ps_create {
+  my ($self, %params) = (shift, @_);
+
+  return %{$self->ua->post(
+        '/apps/'
+      . (defined $params{name} and delete($params{name}))
+      . '/dynos' =>
+      json => \%params
+    )->res->json || {}};
+}
+
+# Only restart is available now?
 sub run {
   my ($self, %params) = (shift, @_);
 
   return
-    %{$self->ua->post('/apps/' . $params{name} . '/ps' => form => \%params)
+    %{$self->ua->post('/apps/' . $params{name} . '/dynos' => form => \%params)
       ->res->json || {}};
 }
 
@@ -141,9 +160,12 @@ sub restart {
   my ($self, %params) = (shift, @_);
 
   return 1
-    if $self->ua->post(
-    '/apps/' . $params{name} . '/ps/restart' => form => \%params)->res->code
-    == 200;
+    if $self->ua->delete(
+        '/apps/'
+      . $params{name}
+      . '/dynos'
+      . ($params{dyno} ? '/' . $params{dyno} : '')
+    )->res->code == 202;
 }
 
 sub stop {
@@ -151,8 +173,12 @@ sub stop {
 
   return 1
     if $self->ua->post(
-    '/apps/' . $params{name} . '/ps/stop' => form => \%params)->res->code
-    == 200;
+        '/apps/'
+      . $params{name}
+      . '/dynos/'
+      . $params{dyno}
+      . '/actions/stop'
+    )->res->code == 202;
 }
 
 sub releases {
@@ -172,12 +198,12 @@ sub releases {
 sub rollback {
   my ($self, %params) = (shift, @_);
 
-  $params{rollback} = delete $params{release};
-
-  return $params{rollback}
+  return $params{release}
     if $self->ua->post(
-    '/apps/' . $params{name} . '/releases' => form => \%params)->res->code
-    == 200;
+        '/apps/'
+      . (defined $params{name} and delete($params{name}))
+      . '/releases' => json => \%params)->res->code
+    == 201;
 }
 
 sub add_domain {
@@ -187,8 +213,8 @@ sub add_domain {
 
   return 1
     if $self->ua->post(
-    $url => form => {'domain_name[domain]' => $params{domain}})->res->code
-    == 200;
+    $url => json => { hostname => $params{domain} })->res->code
+    == 201;
 }
 
 sub domains {

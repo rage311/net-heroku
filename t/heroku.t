@@ -5,18 +5,27 @@ use Net::Heroku;
 
 use constant TEST => $ENV{TEST_ONLINE};
 
-my $username = 'cpantests@empireenterprises.com';
-my $password = 'third13_wave';
-my $api_key  = 'd46d2e0a23e9dd1746d24f88ba6c52206246fb1f';
+my $username = 'cpantests@gmail.com';
+my $password = 'yhi8j9K^g*fo9';
+my $api_key  = '836a16e3-78f4-4367-baa8-51a9753a9dca';
 
 ok my $h = Net::Heroku->new(api_key => $api_key);
 
 subtest auth => sub {
   plan skip_all => 'because' unless TEST;
 
-  is +Net::Heroku->new->_retrieve_api_key($username, $password) => $api_key;
-  is +Net::Heroku->new(email => $username, password => $password)
-    ->ua->api_key => $api_key;
+  # These shouldn't match anymore -- tokens are retrieved instead of key
+  #is +Net::Heroku->new->_retrieve_token($username, $password) => $api_key;
+  #is +Net::Heroku->new(email => $username, password => $password)
+  #->ua->api_key => $api_key;
+
+  my $UUID =
+    qr/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+  like +Net::Heroku->new->_retrieve_token($username, $password) => $UUID;
+
+  like +Net::Heroku->new(email => $username, password => $password)
+    ->ua->api_key => $UUID;
 
   is +Net::Heroku->new(api_key => $api_key)->ua->api_key => $api_key;
 };
@@ -45,16 +54,16 @@ subtest errors => sub {
 
   # Error from body
   ok !$h->destroy(name => $res{name});
-  is $h->error => 'App not found.';
+  is $h->error => 'Couldn\'t find that app.';
 
   is_deeply { $h->error } => {
     code    => 404,
-    message => 'App not found.'
+    message => 'Couldn\'t find that app.'
   };
 };
 
 subtest domains => sub {
-  plan skip_all => 'because' unless TEST;
+  plan skip_all => 'Requires verified account with credit card' unless TEST;
 
   ok my %res = $h->create;
 
@@ -77,8 +86,8 @@ subtest domains => sub {
 subtest apps => sub {
   plan skip_all => 'because' unless TEST;
 
-  ok my %res = $h->create(stack => 'cedar');
-  like $res{stack} => qr/^cedar/;
+  ok my %res = $h->create(stack => 'cedar-14');
+  like $res{stack}{name} => qr/^cedar-14/;
 
   ok grep $_->{name} eq $res{name} => $h->apps;
 
@@ -97,7 +106,7 @@ subtest config => sub {
   ok my %res = $h->create;
 
   is { $h->add_config(name => $res{name}, TEST_CONFIG => 'Net-Heroku') }
-  ->{TEST_CONFIG} => 'Net-Heroku';
+    ->{TEST_CONFIG} => 'Net-Heroku';
 
   is { $h->config(name => $res{name}) }->{TEST_CONFIG} => 'Net-Heroku';
 
@@ -110,11 +119,11 @@ subtest keys => sub {
   my $key =
     'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQCwiIC7DZYfPbSn/O82ei262gnExmsvx27nkmNgl5scyYhJjwMkZrl66zofAkwsydxl+7fNfKio+FsdutNva4yVruk011fzKU+Nsa5jEe0MF/x0e6QwBLtq9QthWomgvoNccV9g3TkkjykCFQQ7aLId1Wur0B+MzwCIVZ5Cm/+K2w== cpantests-net-heroku';
 
-  ok $h->add_key(key => $key);
-  ok grep $_->{contents} eq $key => $h->keys;
+  ok my %added_key = $h->add_key(key => $key);
+  ok grep $_->{public_key} eq $key => $h->keys;
 
-  $h->remove_key(key_name => 'cpantests-net-heroku');
-  ok !grep $_->{contents} eq $key => $h->keys;
+  $h->remove_key(key_id => $added_key{id});
+  ok !grep $_->{public_key} eq $key => $h->keys;
 };
 
 subtest processes => sub {
@@ -123,26 +132,32 @@ subtest processes => sub {
   ok my %res = $h->create;
 
   # List of processes
-  #ok grep defined $_->{pretty_state} => $h->ps(name => $res{name});
   ok !$h->ps(name => $res{name});
 
+  # Create dyno
+  ok my %ps = $h->ps_create(name => $res{name}, command => 'ls');
+
+  # Get dyno info by name
+  ok $h->ps(name => $res{name}, dyno => $ps{name});
+
+  # No run in new heroku API?
   # Run process
-  is { $h->run(name => $res{name}, command => 'ls') }->{state} => 'starting';
+  #is { $h->run(name => $res{name}, command => 'ls') }->{state} => 'starting';
 
   # Restart app
   ok $h->restart(name => $res{name}), 'restart app';
 
   # Restart process
-  ok $h->restart(name => $res{name}, ps => 'ls'), 'restart app process';
+  ok $h->restart(name => $res{name}, dyno => $ps{name}), 'restart app process';
 
   # Stop process
-  ok $h->stop(name => $res{name}, ps => 'ls'), 'stop app process';
+  ok $h->stop(name => $res{name}, dyno => $ps{name}), 'stop app process';
 
   ok $h->destroy(name => $res{name});
 };
 
 subtest releases => sub {
-  #plan skip_all => 'because' unless TEST;
+  plan skip_all => 'because' unless TEST;
 
   ok my %res = $h->create;
 
@@ -160,18 +175,17 @@ subtest releases => sub {
 
   # List of releases
   my @releases = $h->releases(name => $res{name});
-  ok grep $_->{descr} eq 'Set BUILDPACK_URL config vars' => @releases;
+  ok grep $_->{description} eq 'Set BUILDPACK_URL config vars' => @releases;
 
-  # One release by name
+  # One release by id
   my %release =
-    $h->releases(name => $res{name}, release => $releases[-1]{name});
-  is $release{name} => $releases[-1]{name};
+    $h->releases(name => $res{name}, release => $releases[-1]{id});
+  is $release{id} => $releases[-1]{id};
 
   # Rollback to a previous release
-  my $previous_release = 'v' . (int @releases - 1);
-  is $h->rollback(name => $res{name}, release => $previous_release) =>
-    $previous_release;
-  ok !$h->rollback(name => $res{name}, release => 'v0');
+  my $previous_release = $releases[-2];
+  is $h->rollback(name => $res{name}, release => $previous_release->{id}) =>
+    $previous_release->{id};
 
   ok $h->destroy(name => $res{name});
 };

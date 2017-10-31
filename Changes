@@ -1,5 +1,9 @@
 This file documents the revision history for the Net::Heroku distribution.
 
+0.20    2017-10-31 00:00:00
+        - Updated all Heroku API calls to match new API
+        - Changed to using OAuth tokens and Bearer authorization scheme
+
 0.11    2014-01-12 00:00:00
         - Fixed rollback test, Fixed testing string for setting config vars
         - Switched to Mojo::JSON functional interface (briandfoy)

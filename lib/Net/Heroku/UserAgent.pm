@@ -15,8 +15,7 @@ sub build_tx {
   my $path = $self->tx->req->url->path;
   $self->tx->req->url(
     Mojo::URL->new(
-          'https://:'
-        . ($self->api_key || '') . '@'
+          'https://'
         . $self->host
         . (substr($path, 0, 1) eq '/' ? '' : '/')    # optional slash
         . $path
@@ -24,7 +23,13 @@ sub build_tx {
   );
 
   # Headers
-  $self->tx->req->headers->header(Accept => 'application/json');
+  $self->tx->req->headers->header(
+    Accept => 'application/vnd.heroku+json; version=3'
+  );
+
+  $self->tx->req->headers->header(
+    Authorization => 'Bearer ' . $self->api_key
+  ) if $self->api_key;
 
   return $self->tx;
 }
@@ -46,5 +51,5 @@ Net::Heroku::UserAgent inherits all methods from Mojo::UserAgent and implements 
 =head2 build_tx
 
 Builds a transaction using a persistently stored host
-46:	hit eof while in pod documentation (no =cut seen)
-	this can cause trouble with some pod utilities
+
+=cut
