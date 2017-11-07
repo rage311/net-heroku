@@ -3,7 +3,9 @@ use warnings;
 use Test::More;
 use Net::Heroku;
 
-use constant TEST => $ENV{TEST_ONLINE};
+use constant TEST_ONLINE  => $ENV{TEST_ONLINE};
+use constant TEST_DOMAINS => $ENV{TEST_DOMAINS};
+
 
 my $username = 'cpantests@gmail.com';
 my $password = 'yhi8j9K^g*fo9';
@@ -12,17 +14,10 @@ my $api_key  = '836a16e3-78f4-4367-baa8-51a9753a9dca';
 ok my $h = Net::Heroku->new(api_key => $api_key);
 
 subtest auth => sub {
-  plan skip_all => 'because' unless TEST;
-
-  # These shouldn't match anymore -- tokens are retrieved instead of key
-  #is +Net::Heroku->new->_retrieve_token($username, $password) => $api_key;
-  #is +Net::Heroku->new(email => $username, password => $password)
-  #->ua->api_key => $api_key;
+  plan skip_all => 'because' unless TEST_ONLINE;
 
   my $UUID =
     qr/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-  like +Net::Heroku->new->_retrieve_token($username, $password) => $UUID;
 
   like +Net::Heroku->new(email => $username, password => $password)
     ->ua->api_key => $UUID;
@@ -31,7 +26,7 @@ subtest auth => sub {
 };
 
 subtest errors => sub {
-  plan skip_all => 'because' unless TEST;
+  plan skip_all => 'because' unless TEST_ONLINE;
 
   # No error
   ok my %res = $h->create;
@@ -63,7 +58,8 @@ subtest errors => sub {
 };
 
 subtest domains => sub {
-  plan skip_all => 'Requires verified account with credit card' unless TEST;
+  plan skip_all => 'Requires verified account with credit card'
+    unless TEST_DOMAINS;
 
   ok my %res = $h->create;
 
@@ -84,7 +80,7 @@ subtest domains => sub {
 };
 
 subtest apps => sub {
-  plan skip_all => 'because' unless TEST;
+  plan skip_all => 'because' unless TEST_ONLINE;
 
   ok my %res = $h->create(stack => 'cedar-14');
   like $res{stack}{name} => qr/^cedar-14/;
@@ -101,7 +97,7 @@ subtest apps => sub {
 };
 
 subtest config => sub {
-  plan skip_all => 'because' unless TEST;
+  plan skip_all => 'because' unless TEST_ONLINE;
 
   ok my %res = $h->create;
 
@@ -114,7 +110,7 @@ subtest config => sub {
 };
 
 subtest keys => sub {
-  plan skip_all => 'because' unless TEST;
+  plan skip_all => 'because' unless TEST_ONLINE;
 
   my $key =
     'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAgQCwiIC7DZYfPbSn/O82ei262gnExmsvx27nkmNgl5scyYhJjwMkZrl66zofAkwsydxl+7fNfKio+FsdutNva4yVruk011fzKU+Nsa5jEe0MF/x0e6QwBLtq9QthWomgvoNccV9g3TkkjykCFQQ7aLId1Wur0B+MzwCIVZ5Cm/+K2w== cpantests-net-heroku';
@@ -127,7 +123,7 @@ subtest keys => sub {
 };
 
 subtest processes => sub {
-  plan skip_all => 'because' unless TEST;
+  plan skip_all => 'because' unless TEST_ONLINE;
 
   ok my %res = $h->create;
 
@@ -157,7 +153,7 @@ subtest processes => sub {
 };
 
 subtest releases => sub {
-  plan skip_all => 'because' unless TEST;
+  plan skip_all => 'because' unless TEST_ONLINE;
 
   ok my %res = $h->create;
 

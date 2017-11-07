@@ -15,10 +15,10 @@ sub build_tx {
   my $path = $self->tx->req->url->path;
   $self->tx->req->url(
     Mojo::URL->new(
-          'https://'
-        . $self->host
-        . (substr($path, 0, 1) eq '/' ? '' : '/')    # optional slash
-        . $path
+        'https://'
+      . $self->host
+      . (substr($path, 0, 1) eq '/' ? '' : '/')    # optional slash
+      . $path
     )
   );
 

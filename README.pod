@@ -175,6 +175,7 @@ Glen Hinkle C<tempire@cpan.org>
 =head1 CONTRIBUTORS
 
 Brian D. Foy
+
 rage311
 
 =cut

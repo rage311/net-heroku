@@ -16,18 +16,23 @@ sub new {
 
   # Assume email & pass
   $self->ua->api_key(
-    defined $params{email}
+    defined $params{email} && defined $params{password}
     ? $self->_retrieve_token(@params{qw/ email password /})
-    : $params{api_key} ? $params{api_key}
-    :                    ''
+    : $params{api_key}
+      ? $params{api_key}
+      : ''
   );
+
+  # Simple auth test
+  die 'Invalid API key'
+    if $self->ua->get('/apps')->result->code == 401;
 
   return $self;
 }
 
 sub error {
   my $self = shift;
-  my $res  = $self->ua->tx->res;
+  my $res  = $self->ua->tx->result;
 
   return if $res->code =~ /^2\d{2}$/;
 
@@ -43,9 +48,9 @@ sub _retrieve_token {
   my ($self, $email, $password) = @_;
 
   return $self->ua->post(
-      '/oauth/authorizations' =>
-      { Authorization => 'Basic ' . b64_encode("$email:$password", "") }
-    )->res->json('/access_token/token');
+    '/oauth/authorizations' =>
+    { Authorization => 'Basic ' . b64_encode("$email:$password", "") }
+  )->result->json('/access_token/token');
 }
 
 sub apps {
@@ -59,20 +64,20 @@ sub app_created {
   my ($self, %params) = (shift, @_);
 
   return 1
-    if $self->ua->get('/apps/' . $params{name})->res->code == 200;
+    if $self->ua->get('/apps/' . $params{name})->result->code == 200;
 }
 
 sub destroy {
   my ($self, %params) = @_;
 
-  my $res = $self->ua->delete('/apps/' . $params{name})->res;
+  my $res = $self->ua->delete('/apps/' . $params{name})->result;
   return 1 if $res->{code} == 200;
 }
 
 sub create {
   my ($self, %params) = (shift, @_);
 
-  my $res = $self->ua->post('/apps' => json => \%params)->res;
+  my $res = $self->ua->post('/apps' => json => \%params)->result;
 
   return $res->json && $res->code == 201 ? %{$res->json} : ();
 }
@@ -80,12 +85,13 @@ sub create {
 sub add_config {
   my ($self, %params) = (shift, @_);
 
-  return %{$self->ua->patch(
-      '/apps/'
+  return %{
+    $self->ua->patch(
+        '/apps/'
       . (defined $params{name} and delete($params{name}))
       . '/config-vars' =>
       json => \%params
-    )->res->json
+    )->result->json
     || {}
   };
 }
@@ -93,18 +99,20 @@ sub add_config {
 sub config {
   my ($self, %params) = (shift, @_);
 
-  return
-    %{$self->ua->get('/apps/' . $params{name} . '/config-vars')->res->json
-      || []};
+  return %{
+    $self->ua->get('/apps/' . $params{name} . '/config-vars')->result->json
+    || []
+  };
 }
 
 sub add_key {
   my ($self, %params) = (shift, @_);
 
-  return
-    %{$self->ua->post(
+  return %{
+    $self->ua->post(
       '/account/keys' => json => { public_key => $params{key} }
-    )->result->json};
+    )->result->json
+  };
 }
 
 sub keys {
@@ -118,7 +126,7 @@ sub remove_key {
   my ($self, %params) = (shift, @_);
 
   my $res =
-    $self->ua->delete('/account/keys/' . url_escape($params{key_id}))->res;
+    $self->ua->delete('/account/keys/' . url_escape($params{key_id}))->result;
   return 1 if $res->{code} == 200;
 }
 
@@ -131,7 +139,7 @@ sub ps {
     . '/dynos'
     . ($params{dyno} ? '/' . $params{dyno} : '');
 
-  my $ps = $self->ua->get($url)->res->json || [];
+  my $ps = $self->ua->get($url)->result->json || [];
 
   return $params{dyno} ? %$ps : @$ps;
 }
@@ -139,12 +147,15 @@ sub ps {
 sub ps_create {
   my ($self, %params) = (shift, @_);
 
-  return %{$self->ua->post(
+  return %{
+    $self->ua->post(
         '/apps/'
       . (defined $params{name} and delete($params{name}))
       . '/dynos' =>
       json => \%params
-    )->res->json || {}};
+    )->result->json
+    || {}
+  };
 }
 
 sub restart {
@@ -156,7 +167,7 @@ sub restart {
       . $params{name}
       . '/dynos'
       . ($params{dyno} ? '/' . $params{dyno} : '')
-    )->res->code == 202;
+    )->result->code == 202;
 }
 
 sub stop {
@@ -169,7 +180,7 @@ sub stop {
       . '/dynos/'
       . $params{dyno}
       . '/actions/stop'
-    )->res->code == 202;
+    )->result->code == 202;
 }
 
 sub releases {
@@ -181,7 +192,7 @@ sub releases {
     . '/releases'
     . ($params{release} ? '/' . $params{release} : '');
 
-  my $releases = $self->ua->get($url)->res->json || [];
+  my $releases = $self->ua->get($url)->result->json || [];
 
   return $params{release} ? %$releases : @$releases;
 }
@@ -193,8 +204,8 @@ sub rollback {
     if $self->ua->post(
         '/apps/'
       . (defined $params{name} and delete($params{name}))
-      . '/releases' => json => \%params)->res->code
-    == 201;
+      . '/releases' => json => \%params
+    )->result->code == 201;
 }
 
 sub add_domain {
@@ -204,7 +215,8 @@ sub add_domain {
 
   return 1
     if $self->ua->post(
-      $url => json => { hostname => $params{domain} })->res->code == 201;
+      $url => json => { hostname => $params{domain} }
+    )->result->code == 201;
 }
 
 sub domains {
@@ -212,7 +224,7 @@ sub domains {
 
   my $url = '/apps/' . $params{name} . '/domains';
 
-  return @{$self->ua->get($url)->res->json || []};
+  return @{$self->ua->get($url)->result->json || []};
 }
 
 sub remove_domain {
@@ -220,8 +232,8 @@ sub remove_domain {
 
   return 1
     if $self->ua->delete(
-    '/apps/' . $params{name} . '/domains/' . url_escape($params{domain}))
-    ->res->code == 200;
+      '/apps/' . $params{name} . '/domains/' . url_escape($params{domain})
+    )->result->code == 200;
 }
 
 1;
@@ -401,6 +413,7 @@ Glen Hinkle C<tempire@cpan.org>
 =head1 CONTRIBUTORS
 
 Brian D. Foy
+
 rage311
 
 =cut
